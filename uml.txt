@@ -1,0 +1,70 @@
+
+Table support_responses {
+  ticket_id uuid
+  response text // doc
+  responder string
+  status string
+  priority string
+  timestamp datetime
+}
+
+Table support_tickets {
+  student_id uuid
+  problem text // doc
+  status string
+  priority string
+  writer_type string
+  timestamp datetime
+}
+
+Table documents {
+  name string
+  description vector // doc
+  valid_from datetime
+  timestamp datetime
+  confidential boolean
+}
+
+Table courses {
+  program_id uuid
+  exam_id uuid
+  name string
+  description vector // doc
+}
+
+Table exam {
+  course_id uuid
+  name string
+  content vector // doc
+  passing_score float
+}
+
+Table programs {
+  name string
+  description vector // doc
+}
+
+Table successors {
+  student_id uuid
+  description text // doc
+  name string
+  surname string
+  email string
+  program_id uuid
+  final_score number
+  timestamp datetime
+}
+
+Table professor_reviews {
+  // Reviewer Info
+  name string
+  surname string
+  department string
+  title string
+
+  // Review Details
+  review text // doc
+  rating int
+  course_name string
+  timestamp datetime
+}
