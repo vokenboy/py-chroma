@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  chroma1:
+    image: chromadb/chroma:latest
+    container_name: chroma1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma1/:/data
+    restart: unless-stopped
+
+  chroma2:
+    image: chromadb/chroma:latest
+    container_name: chroma2
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./chroma2/:/data
+    restart: unless-stopped

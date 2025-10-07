@@ -1,0 +1,11 @@
+document,metadata
+"Comprehensive test on search, logic, and probabilistic reasoning.","{""course_id"": ""1d92c080-06d9-4f71-a92a-0559f077cb9d"", ""name"": ""AI Final Exam"", ""passing_score"": 6.9}"
+"Covers trees, graphs, hashing, and complexity analysis.","{""course_id"": ""ca8157a2-793a-496e-90d7-1a3292e228e3"", ""name"": ""Data Structures Midterm"", ""passing_score"": 8.3}"
+Full-stack build-and-explain questions and debugging tasks.,"{""course_id"": ""94345581-a8ed-4bfb-a70c-434d31ec2892"", ""name"": ""Web Dev Final"", ""passing_score"": 7.4}"
+"Short-answer questions on models, bias-variance, and metrics.","{""course_id"": ""4fd7ee26-72f9-43ff-8e00-3ba562fa38df"", ""name"": ""ML Quiz"", ""passing_score"": 8.1}"
+"Processes, synchronization, and memory management problems.","{""course_id"": ""9f8ff288-b21f-4a68-9318-4a279e660174"", ""name"": ""OS Midterm"", ""passing_score"": 9.3}"
+"SQL queries, normalization, and transaction scenarios.","{""course_id"": ""3dab693f-d38e-461c-b3e1-5318ea598cc2"", ""name"": ""Database Final"", ""passing_score"": 8.8}"
+"Routing, TCP/IP stack, and troubleshooting exercises.","{""course_id"": ""c465deb0-f332-4349-921d-c11104f57cf2"", ""name"": ""Networks Exam"", ""passing_score"": 7.6}"
+"Design, testing strategies, and code review artifacts.","{""course_id"": ""ad5e546b-273c-4e21-a8fe-aa979cf3104d"", ""name"": ""SE Project Exam"", ""passing_score"": 9.4}"
+"Threat analysis, cryptography basics, and incident response.","{""course_id"": ""6e800649-8dd7-4b03-9782-c825b7cb2162"", ""name"": ""Cybersecurity Assessment"", ""passing_score"": 7.5}"
+"Cloud primitives, scaling strategies, and fault-tolerance.","{""course_id"": ""06679b62-cc78-4346-93eb-35507b4f4c3c"", ""name"": ""Cloud Systems Exam"", ""passing_score"": 8.3}"

@@ -1,0 +1,8 @@
+/chroma1/chroma.sqlite3
+/chroma2/chroma.sqlite3
+**/chroma.sqlite3
+**/index/*
+**/chroma.db
+
+/venv/
+__pycache__/
