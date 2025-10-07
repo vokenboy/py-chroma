@@ -1,4 +1,5 @@
 
+// external
 Table support_responses {
   ticket_id uuid
   response text // doc
@@ -8,6 +9,8 @@ Table support_responses {
   timestamp datetime
 }
 
+
+// external
 Table support_tickets {
   student_id uuid
   problem text // doc
@@ -17,6 +20,7 @@ Table support_tickets {
   timestamp datetime
 }
 
+// internal
 Table documents {
   name string
   description vector // doc
@@ -25,6 +29,7 @@ Table documents {
   confidential boolean
 }
 
+// internal
 Table courses {
   program_id uuid
   exam_id uuid
@@ -32,6 +37,7 @@ Table courses {
   description vector // doc
 }
 
+// internal
 Table exam {
   course_id uuid
   name string
@@ -39,22 +45,25 @@ Table exam {
   passing_score float
 }
 
+// internal
 Table programs {
   name string
   description vector // doc
 }
 
-Table successors {
-  student_id uuid
-  description text // doc
-  name string
-  surname string
-  email string
-  program_id uuid
-  final_score number
-  timestamp datetime
+// shared
+Table students {
+  student_id uuid // internal
+  review text // doc // external
+  name string // internal
+  surname string // internal
+  email string // internal
+  program_id uuid // external
+  final_score number // external
+  timestamp datetime // external
 }
 
+// external
 Table professor_reviews {
   // Reviewer Info
   name string
