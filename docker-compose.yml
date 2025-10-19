@@ -9,12 +9,3 @@ services:
     volumes:
       - ./chroma1/:/data
     restart: unless-stopped
-
-  chroma2:
-    image: chromadb/chroma:latest
-    container_name: chroma2
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./chroma2/:/data
-    restart: unless-stopped
