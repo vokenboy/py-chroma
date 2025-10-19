@@ -5,7 +5,7 @@ services:
     image: chromadb/chroma:latest
     container_name: chroma1
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
       - ./chroma1/:/data
     restart: unless-stopped
