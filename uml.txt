@@ -2,6 +2,7 @@
 // external
 Table support_responses {
   ticket_id uuid
+  student_id uuid
   response text // doc
   responder string
   status string
@@ -67,6 +68,7 @@ Table students {
 // external
 Table professor_reviews {
   // Reviewer Info
+  student_id uuid
   name string
   surname string
   department string
