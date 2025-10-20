@@ -20,15 +20,16 @@ tenant, db22 = get_or_create_tenant_for_user(admin, user_id, "db22")
 client_db21 = chromadb.HttpClient(tenant=tenant, database=db21, port=PORT)
 client_db22 = chromadb.HttpClient(tenant=tenant, database=db22, port=PORT)
 
-DATA_FOLDER = "./DB21"
-TABLES11 = ["courses", "documents", "exam", "programs", "students"]
-TABLES12 = ["courses"]
+DB21_FOLDER = "./DB21"
+DB22_FOLDER = "./DB21"
+TABLES21 = ["courses", "documents", "exam", "programs", "students"]
+TABLES22 = ["courses", "documents", "exam", "programs", "students"]
 
-for name in TABLES11:
-    import_csv_to_chroma(client_db21, DATA_FOLDER, name, f"{name}.csv")
+for name in TABLES21:
+    import_csv_to_chroma(client_db21, DB21_FOLDER, name, f"{name}.csv")
 
-for name in TABLES12:
-    import_csv_to_chroma(client_db22, DATA_FOLDER, name, f"{name}.csv")
+for name in TABLES22:
+    import_csv_to_chroma(client_db22, DB22_FOLDER, name, f"{name}.csv")
 
 print(client_db21.list_collections())
 print(client_db22.list_collections())
