@@ -22,8 +22,8 @@ client_db22 = chromadb.HttpClient(tenant=tenant, database=db22, port=PORT)
 
 DB21_FOLDER = "./DB21"
 DB22_FOLDER = "./DB21"
-TABLES21 = ["courses", "documents", "exam", "programs", "students"]
-TABLES22 = ["courses", "documents", "exam", "programs", "students"]
+TABLES21 = ["courses", "documents", "exams", "programs", "students"]
+TABLES22 = ["courses", "documents", "exams", "programs", "students"]
 
 for name in TABLES21:
     import_csv_to_chroma(client_db21, DB21_FOLDER, name, f"{name}.csv")

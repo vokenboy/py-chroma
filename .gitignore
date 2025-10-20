@@ -4,5 +4,9 @@
 **/index/*
 **/chroma.db
 
+/dbvs1/*
+/dbvs2/*
+
+
 /venv/
 __pycache__/

@@ -23,7 +23,7 @@ Table support_tickets {
 // internal
 Table documents {
   name string
-  description vector // doc
+  description text // doc
   valid_from datetime
   timestamp datetime
   confidential boolean
@@ -34,33 +34,34 @@ Table courses {
   program_id uuid
   exam_id uuid
   name string
-  description vector // doc
+  description text // doc
 }
 
 // internal
 Table exam {
   course_id uuid
   name string
-  content vector // doc
+  content text // doc
   passing_score float
 }
 
 // internal
 Table programs {
   name string
-  description vector // doc
+  description text // doc
 }
 
 // shared
 Table students {
   student_id uuid // internal
   review text // doc // external
+  motivational_letter text // doc // internal
   name string // internal
   surname string // internal
   email string // internal
-  program_id uuid // external
   final_score number // external
   timestamp datetime // external
+  study_year number // internal
 }
 
 // external
