@@ -21,7 +21,7 @@ def get_or_create_tenant_for_user(admin_client, user_id, db_name):
 
     return tenant_id, db_name
 
-def import_csv_to_chroma(client, base_folder, collection_name, filename):
+def import_csv_to_chroma(client, base_folder, collection_name, filename, id_fn=None, metadata_fn=None):
     filepath = os.path.join(base_folder, filename)
     if not os.path.exists(filepath):
         print(f"File not found: {filepath}")
@@ -39,9 +39,32 @@ def import_csv_to_chroma(client, base_folder, collection_name, filename):
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                ids.append(str(uuid.uuid4()))
-                docs.append(row["document"].strip())
-                metas.append(json.loads(row["metadata"]))
+                doc = row["document"].strip()
+                meta = json.loads(row["metadata"]) if row.get("metadata") else {}
+
+                if callable(metadata_fn):
+                    try:
+                        meta = metadata_fn(meta, row)
+                    except Exception as e:
+                        print(f"metadata_fn error on {filename}: {e}")
+
+                # Prefer explicit CSV id column if present
+                rid = None
+                if "id" in row and str(row["id"]).strip() != "":
+                    rid = str(row["id"]).strip()
+                elif callable(id_fn):
+                    try:
+                        rid = id_fn(meta, row)
+                    except Exception as e:
+                        print(f"id_fn error on {filename}: {e}")
+                        rid = None
+
+                if not rid:
+                    rid = str(uuid.uuid4())
+
+                ids.append(rid)
+                docs.append(doc)
+                metas.append(meta)
             except Exception as e:
                 print(f"Error reading {filename}: {e}")
 

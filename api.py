@@ -115,6 +115,9 @@ def insert_student(student: Student):
 
     if target_server == "DBVS2":
         metadata["student_id"] = student_id
+    if target_server == "DBVS1":
+        # Mirror student_id into DBVS1 metadata to ensure vertical join compatibility
+        metadata["student_id"] = student_id
 
     if target_server == "DBVS1" and "timestamp" not in metadata:
         metadata["timestamp"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -308,3 +311,79 @@ def find_related_document_to_policy(
 
 
 
+@app.get("/students")
+def get_all_students():
+    aggregated = {"DBVS1": {}, "DBVS2": {}}
+
+    for server_name, frags in FRAGMENTS.items():
+        for frag_type, frag_info in frags.items():
+            db_name = frag_info["database"]
+            try:
+                client = get_client(server_name, db_name)
+                try:
+                    collection = client.get_collection("students")
+                except Exception:
+                    continue
+
+                data = collection.get(limit=None)
+                ids = data.get("ids", [])
+                docs = data.get("documents", [])
+                metas = data.get("metadatas", [])
+
+                for i, row_id in enumerate(ids):
+                    meta = metas[i] if i < len(metas) else {}
+                    doc = docs[i] if i < len(docs) else None
+
+                    merge_id = row_id
+
+                    if not merge_id:
+                        continue
+
+                    if merge_id not in aggregated[server_name]:
+                        aggregated[server_name][merge_id] = {
+                            "document": doc,
+                            "metadata": meta if isinstance(meta, dict) else {},
+                        }
+            except HTTPException:
+                raise
+            except Exception:
+                continue
+
+    all_merge_ids = set(aggregated["DBVS1"].keys()) | set(aggregated["DBVS2"].keys())
+    students = []
+    for mid in all_merge_ids:
+        dbvs1_entry = aggregated["DBVS1"].get(mid, {})
+        dbvs2_entry = aggregated["DBVS2"].get(mid, {})
+
+        document = dbvs2_entry.get("document") or dbvs1_entry.get("document")
+
+        merged = {}
+        if isinstance(dbvs2_entry.get("metadata"), dict):
+            merged.update(dbvs2_entry.get("metadata") or {})
+        if isinstance(dbvs1_entry.get("metadata"), dict):
+            merged.update(dbvs1_entry.get("metadata") or {})
+
+        fields = {
+            "student_id": None,
+            "name": None,
+            "surname": None,
+            "email": None,
+            "final_score": None,
+            "timestamp": None,
+            "study_year": None,
+        }
+
+        for k in list(fields.keys()):
+            if k in merged:
+                fields[k] = merged.get(k)
+
+        if fields["student_id"] is None:
+            fields["student_id"] = mid
+
+        students.append({
+            "id": mid,
+            "document": document,
+            "metadata": fields,
+        })
+
+    return {"students": students}
