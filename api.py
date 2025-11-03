@@ -422,6 +422,262 @@ def delete_course(course_id: str):
     }
 
 
+class MoveCourseRequest(BaseModel):
+    target_db: str
+
+
+@app.post("/course/{course_id}/move")
+def move_course(course_id: str, req: MoveCourseRequest):
+    target_db2 = req.target_db.strip().lower()
+    if target_db2 not in ("db21", "db22"):
+        raise HTTPException(status_code=400, detail="target_db must be 'db21' or 'db22'")
+
+    course_id_str = str(course_id)
+
+    # Find course in DBVS2
+    source_db2 = None
+    src_course_doc = None
+    src_course_meta = None
+    src_course_collection = None
+    for frag_info in FRAGMENTS["DBVS2"].values():
+        db_name = frag_info["database"]
+        client = get_client("DBVS2", db_name)
+        try:
+            col = client.get_collection("courses")
+        except Exception:
+            continue
+        data = col.get(limit=None)
+        ids = data.get("ids", [])
+        if course_id_str in ids:
+            idx = ids.index(course_id_str)
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
+            src_course_doc = docs[idx] if idx < len(docs) else None
+            src_course_meta = metas[idx] if idx < len(metas) else {}
+            source_db2 = db_name
+            src_course_collection = col
+            break
+
+    if source_db2 is None:
+        raise HTTPException(status_code=404, detail=f"Course {course_id_str} not found in DBVS2")
+
+    if source_db2 == target_db2:
+        return {"message": "Course already in target fragment", "course_id": course_id_str, "db": target_db2}
+
+    # Extract linked ids from course metadata
+    exam_id = src_course_meta.get("exam_id")
+    program_id = src_course_meta.get("program_id")
+
+    # Helper to get one row by id from a collection
+    def _get_row(client, collection_name, rid):
+        try:
+            col = client.get_collection(collection_name)
+        except Exception:
+            return None, None, None
+        data = col.get(limit=None)
+        ids = data.get("ids", [])
+        if str(rid) in ids:
+            idx = ids.index(str(rid))
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
+            return col, docs[idx] if idx < len(docs) else None, metas[idx] if idx < len(metas) else {}
+        return col, None, None
+
+    # Save source items (for rollback)
+    src_client2 = get_client("DBVS2", source_db2)
+    tgt_client2 = get_client("DBVS2", target_db2)
+
+    # Exams
+    src_exam_col, src_exam_doc, src_exam_meta = (None, None, None)
+    if exam_id is not None:
+        src_exam_col, src_exam_doc, src_exam_meta = _get_row(src_client2, "exams", exam_id)
+
+    # Programs
+    src_prog_col, src_prog_doc, src_prog_meta = (None, None, None)
+    if program_id is not None:
+        src_prog_col, src_prog_doc, src_prog_meta = _get_row(src_client2, "programs", program_id)
+
+    # Perform moves in DBVS2: course -> exams -> programs
+    moved = {"course": False, "exam": False, "program": False}
+    try:
+        # Move course
+        tgt_course_col = tgt_client2.get_or_create_collection("courses")
+        try:
+            tgt_course_col.add(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+        except Exception:
+            # id may exist; try update
+            tgt_course_col.update(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+        src_course_collection.delete(ids=[course_id_str])
+        moved["course"] = True
+
+        # Move exam
+        if exam_id is not None and src_exam_col is not None and src_exam_doc is not None and src_exam_meta is not None:
+            tgt_exam_col = tgt_client2.get_or_create_collection("exams")
+            try:
+                tgt_exam_col.add(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+            except Exception:
+                tgt_exam_col.update(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+            src_exam_col.delete(ids=[str(exam_id)])
+            moved["exam"] = True
+
+        # Move program
+        if program_id is not None and src_prog_col is not None and src_prog_doc is not None and src_prog_meta is not None:
+            tgt_prog_col = tgt_client2.get_or_create_collection("programs")
+            try:
+                tgt_prog_col.add(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+            except Exception:
+                tgt_prog_col.update(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+            src_prog_col.delete(ids=[str(program_id)])
+            moved["program"] = True
+    except Exception as e:
+        # Rollback within DBVS2
+        try:
+            if moved.get("program"):
+                # Move program back
+                try:
+                    src_prog_col.add(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+                except Exception:
+                    src_prog_col.update(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+                try:
+                    tgt_client2.get_or_create_collection("programs").delete(ids=[str(program_id)])
+                except Exception:
+                    pass
+            if moved.get("exam"):
+                try:
+                    src_exam_col.add(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+                except Exception:
+                    src_exam_col.update(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+                try:
+                    tgt_client2.get_or_create_collection("exams").delete(ids=[str(exam_id)])
+                except Exception:
+                    pass
+            if moved.get("course"):
+                try:
+                    src_course_collection.add(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+                except Exception:
+                    src_course_collection.update(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+                try:
+                    tgt_course_col.delete(ids=[course_id_str])
+                except Exception:
+                    pass
+        except Exception as rb_err:
+            raise HTTPException(status_code=500, detail=f"Failed moving course within DBVS2: {str(e)}; rollback failed: {str(rb_err)}")
+        raise HTTPException(status_code=500, detail=f"Failed moving course within DBVS2: {str(e)}")
+
+    # Now move course_reviews across DBVS1
+    src_db1 = "db11" if source_db2 == "db21" else "db12"
+    tgt_db1 = "db11" if target_db2 == "db21" else "db12"
+    moved_review_ids = []
+    try:
+        src_client1 = get_client("DBVS1", src_db1)
+        tgt_client1 = get_client("DBVS1", tgt_db1)
+        try:
+            src_rev_col = src_client1.get_collection("course_review")
+        except Exception:
+            src_rev_col = None
+        if src_rev_col is not None:
+            data = src_rev_col.get(limit=None)
+            ids = data.get("ids", [])
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
+            tgt_rev_col = tgt_client1.get_or_create_collection("course_review")
+            # Move matching by metadata.course_id == course_id
+            for i, rid in enumerate(ids):
+                meta = metas[i] if i < len(metas) else {}
+                if isinstance(meta, dict) and str(meta.get("course_id")) == course_id_str:
+                    doc = docs[i] if i < len(docs) else None
+                    try:
+                        tgt_rev_col.add(ids=[rid], documents=[doc or ""], metadatas=[meta or {}])
+                    except Exception:
+                        tgt_rev_col.update(ids=[rid], documents=[doc or ""], metadatas=[meta or {}])
+                    moved_review_ids.append(rid)
+            # After adds/updates, delete from source
+            if moved_review_ids:
+                src_rev_col.delete(ids=moved_review_ids)
+    except Exception as e:
+        # Rollback entire DBVS2 move if review move fails
+        try:
+            # Move program back
+            if program_id is not None and src_prog_col is not None and src_prog_doc is not None and src_prog_meta is not None:
+                try:
+                    src_prog_col.add(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+                except Exception:
+                    src_prog_col.update(ids=[str(program_id)], documents=[src_prog_doc or ""], metadatas=[src_prog_meta or {}])
+                try:
+                    tgt_client2.get_or_create_collection("programs").delete(ids=[str(program_id)])
+                except Exception:
+                    pass
+            # Move exam back
+            if exam_id is not None and src_exam_col is not None and src_exam_doc is not None and src_exam_meta is not None:
+                try:
+                    src_exam_col.add(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+                except Exception:
+                    src_exam_col.update(ids=[str(exam_id)], documents=[src_exam_doc or ""], metadatas=[src_exam_meta or {}])
+                try:
+                    tgt_client2.get_or_create_collection("exams").delete(ids=[str(exam_id)])
+                except Exception:
+                    pass
+            # Move course back
+            try:
+                src_course_collection.add(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+            except Exception:
+                src_course_collection.update(ids=[course_id_str], documents=[src_course_doc or ""], metadatas=[src_course_meta or {}])
+            try:
+                tgt_client2.get_or_create_collection("courses").delete(ids=[course_id_str])
+            except Exception:
+                pass
+            # Cleanup any partially added reviews in target
+            if moved_review_ids:
+                try:
+                    tgt_client1.get_or_create_collection("course_review").delete(ids=moved_review_ids)
+                except Exception:
+                    pass
+        except Exception as rb_err:
+            raise HTTPException(status_code=500, detail=f"Failed moving course_reviews: {str(e)}; rollback failed: {str(rb_err)}")
+        raise HTTPException(status_code=500, detail=f"Failed moving course_reviews: {str(e)}")
+
+    return {
+        "message": "Course moved successfully",
+        "course_id": course_id_str,
+        "from_dbvs2": source_db2,
+        "to_dbvs2": target_db2,
+        "moved_reviews": len(moved_review_ids),
+        "from_dbvs1": src_db1,
+        "to_dbvs1": tgt_db1,
+    }
+
+
+@app.post("/course/{course_id}/upgrade")
+def upgrade_course(course_id: str):
+    """
+    Body-less convenience endpoint that moves course from db21 -> db22,
+    including linked exam/program and related course_review entries.
+    If already in db22, returns a no-op message.
+    """
+    course_id_str = str(course_id)
+    current_db2 = None
+    for frag_info in FRAGMENTS["DBVS2"].values():
+        db_name = frag_info["database"]
+        client = get_client("DBVS2", db_name)
+        try:
+            col = client.get_collection("courses")
+        except Exception:
+            continue
+        data = col.get(limit=None)
+        if course_id_str in (data.get("ids", []) or []):
+            current_db2 = db_name
+            break
+
+    if current_db2 is None:
+        raise HTTPException(status_code=404, detail=f"Course {course_id_str} not found in DBVS2")
+
+    if current_db2 == "db22":
+        return {"message": "Course already at upper level (db22)", "course_id": course_id_str, "db": current_db2}
+
+    # Move from db21 -> db22
+    return move_course(course_id, MoveCourseRequest(target_db="db22"))
+
+
 @app.put("/student/{student_id}")
 def update_student(student_id: str, update: StudentUpdate):
     metadata = update.metadata

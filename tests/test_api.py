@@ -292,3 +292,45 @@ def test_delete_student_success_with_rollback_on_second_delete(test_client, monk
     # DBVS1 must be rolled back (student present again)
     s1 = get_collection_store("DBVS1", "db11", "students")
     assert sid in s1
+
+
+def test_move_course_transfers_related_entities_and_reviews(test_client):
+    # Seed course 5 in DBVS2:db21 with linked exam_id=5 and program_id=5
+    c_db21 = InMemoryHttpClient("DBVS2", "db21")
+    seed_course(c_db21, "5", "Database Systems", {"name": "Database Systems", "exam_id": 5, "program_id": 5})
+
+    # Seed related exam and program in db21
+    exams_col = c_db21.get_or_create_collection("exams")
+    exams_col.add(ids=["5"], documents=["Database Final"], metadatas=[{"course_id": 5, "name": "Database Final", "passing_score": 8.8}])
+
+    progs_col = c_db21.get_or_create_collection("programs")
+    progs_col.add(ids=["5"], documents=["Data Science"], metadatas=[{"name": "Data Science"}])
+
+    # Seed two course reviews in DBVS1:db11 with course_id 5
+    r_db11 = InMemoryHttpClient("DBVS1", "db11")
+    seed_review(r_db11, "rv1", "good", {"course_id": 5})
+    seed_review(r_db11, "rv2", "great", {"course_id": 5})
+
+    # Move course to db22
+    resp = test_client.post("/course/5/move", json={"target_db": "db22"})
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["from_dbvs2"] == "db21"
+    assert out["to_dbvs2"] == "db22"
+    assert out["moved_reviews"] == 2
+    assert out["from_dbvs1"] == "db11"
+    assert out["to_dbvs1"] == "db12"
+
+    # DBVS2 assertions: course/exam/program removed from db21 and present in db22
+    assert "5" not in get_collection_store("DBVS2", "db21", "courses")
+    assert "5" in get_collection_store("DBVS2", "db22", "courses")
+    assert "5" not in get_collection_store("DBVS2", "db21", "exams")
+    assert "5" in get_collection_store("DBVS2", "db22", "exams")
+    assert "5" not in get_collection_store("DBVS2", "db21", "programs")
+    assert "5" in get_collection_store("DBVS2", "db22", "programs")
+
+    # DBVS1 assertions: reviews moved from db11 to db12
+    assert "rv1" not in get_collection_store("DBVS1", "db11", "course_review")
+    assert "rv2" not in get_collection_store("DBVS1", "db11", "course_review")
+    assert "rv1" in get_collection_store("DBVS1", "db12", "course_review")
+    assert "rv2" in get_collection_store("DBVS1", "db12", "course_review")
