@@ -944,8 +944,8 @@ def get_all_students():
 
         students.append({
             "id": mid,
-            "external_document": external_document,
-            "internal_document": internal_document,
+            "review": external_document,
+            "motivational_letter": internal_document,
             "metadata": fields,
         })
 
