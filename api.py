@@ -1,10 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from fastapi import Query
 from pydantic import BaseModel
 import chromadb
+import uuid
 
-# ===================================
-# CONFIGURATION
-# ===================================
 SERVERS = [
     {"name": "DBVS1", "host": "localhost", "port": 8000},
     {"name": "DBVS2", "host": "localhost", "port": 8001},
@@ -12,7 +11,6 @@ SERVERS = [
 
 TENANT = "tenant_user:user12"
 
-# Fragment rules for both servers
 FRAGMENTS = {
     "DBVS1": {
         "internal": {"database": "db11", "year_range": [1, 2]},
@@ -24,12 +22,39 @@ FRAGMENTS = {
     },
 }
 
-app = FastAPI(title="Smart Student Routing API", version="4.2")
+app = FastAPI()
 
 
-# ===================================
-# HELPERS
-# ===================================
+class DBVS1Metadata(BaseModel):
+    timestamp: str | None = None
+    final_score: float
+    study_year: int
+
+    class Config:
+        extra = "forbid"
+
+
+class DBVS2Metadata(BaseModel):
+    student_id: str | None = None
+    name: str
+    surname: str
+    email: str
+    study_year: int
+
+    class Config:
+        extra = "forbid"
+
+
+class Student(BaseModel):
+    document: str
+    metadata: dict
+
+
+class StudentUpdate(BaseModel):
+    document: str | None = None
+    metadata: dict
+
+
 def get_server_by_name(name: str):
     for s in SERVERS:
         if s["name"].lower() == name.lower():
@@ -47,139 +72,239 @@ def get_client(server_name: str, db_name: str):
     )
 
 
-def classify_target_server(metadata: dict) -> str:
-    """Choose which server to insert into based on metadata content."""
-    meta_keys = metadata.keys()
-    if any(k in meta_keys for k in ["student_id", "name", "surname", "email"]):
-        return "DBVS2"  # personal info → internal system
-    if any(k in meta_keys for k in ["final_score", "timestamp"]):
-        return "DBVS1"  # academic data → external system
-    raise HTTPException(status_code=400, detail="Metadata does not match known server rules.")
-
-
 def resolve_fragment(server_name: str, study_year: int):
-    """Find the fragment on that server for the student's study_year."""
     fragments = FRAGMENTS[server_name]
     for frag_type, frag_info in fragments.items():
         if frag_info["year_range"][0] <= study_year <= frag_info["year_range"][1]:
             return frag_info["database"]
-    raise HTTPException(status_code=400, detail=f"No fragment found for study_year {study_year} on {server_name}")
+    raise HTTPException(
+        status_code=400,
+        detail=f"No fragment found for study_year {study_year} on {server_name}",
+    )
 
 
-# ===================================
-# MODELS
-# ===================================
-class Student(BaseModel):
-    id: str
-    document: str
-    metadata: dict
+def detect_metadata_type(metadata: dict):
+    if "final_score" in metadata:
+        DBVS1Metadata(**metadata)
+        return "DBVS1"
+    elif all(k in metadata for k in ["name", "surname", "email", "study_year"]):
+        DBVS2Metadata(**metadata)
+        return "DBVS2"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid metadata structure.")
 
 
-# ===================================
-# ENDPOINTS
-# ===================================
+from datetime import datetime
 
-@app.post("/insert")
+from datetime import datetime
+
+@app.post("/student")
 def insert_student(student: Student):
-    """Insert student into the correct server and DB based on metadata + study_year."""
-    study_year = int(student.metadata.get("study_year"))
-    target_server = classify_target_server(student.metadata)
+    student_id = str(uuid.uuid4())
+    metadata = student.metadata
+
+    if not isinstance(metadata.get("study_year"), int):
+        try:
+            metadata["study_year"] = int(metadata.get("study_year"))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="study_year must be an integer")
+
+    target_server = detect_metadata_type(metadata)
+    study_year = metadata.get("study_year")
     target_db = resolve_fragment(target_server, study_year)
 
-    print(f"INSERT student {student.id} (year {study_year}) → {target_server}/{target_db}")
+    if target_server == "DBVS2":
+        metadata["student_id"] = student_id
+
+    if target_server == "DBVS1" and "timestamp" not in metadata:
+        metadata["timestamp"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     try:
         client = get_client(target_server, target_db)
         collection = client.get_or_create_collection("students")
         collection.add(
             documents=[student.document],
-            metadatas=[student.metadata],
-            ids=[student.id],
+            metadatas=[metadata],
+            ids=[student_id],
         )
-        return {
-            "status": "success",
-            "inserted_in": f"{target_server}/{target_db}",
-            "student_id": student.id,
-        }
+        return {"message": "Student inserted successfully", "student_id": student_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Insert failed: {str(e)}")
 
 
-@app.get("/select-year-range")
-def select_students(start_year: int, end_year: int):
-    """Select students from all servers for a year range."""
-    results = []
-    total = 0
+@app.put("/student/{student_id}")
+def update_student(student_id: str, update: StudentUpdate):
+    metadata = update.metadata
+    new_year = metadata.get("study_year")
+
+    if new_year is not None:
+        try:
+            new_year = int(new_year)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400)
+
+        if new_year not in [1, 2, 3, 4]:
+            raise HTTPException(status_code=400)
+
+    moved = False
+
+    for server_name, frags in FRAGMENTS.items():
+        for frag_type, frag_info in frags.items():
+            db_name = frag_info["database"]
+            client = get_client(server_name, db_name)
+            collection = client.get_or_create_collection("students")
+            data = collection.get(limit=None)
+            ids = data.get("ids", [])
+            metas = data.get("metadatas", [])
+            docs = data.get("documents", [])
+
+            if student_id in ids:
+                idx = ids.index(student_id)
+                existing_metadata = metas[idx]
+                document = docs[idx]
+                existing_metadata.update(metadata)
+                if update.document:
+                    document = update.document
+
+                new_db = resolve_fragment(server_name, new_year) if new_year else db_name
+
+                if new_db == db_name:
+                    collection.update(
+                        ids=[student_id],
+                        metadatas=[existing_metadata],
+                        documents=[document],
+                    )
+                else:
+                    new_client = get_client(server_name, new_db)
+                    new_collection = new_client.get_or_create_collection("students")
+                    new_collection.add(
+                        documents=[document],
+                        metadatas=[existing_metadata],
+                        ids=[student_id],
+                    )
+                    collection.delete(ids=[student_id])
+
+                moved = True
+                break
+        if moved:
+            break
+
+    if not moved:
+        raise HTTPException(status_code=404, detail="Student not found in any database.")
+
+    return Response(status_code=200)
+
+@app.delete("/student/{student_id}")
+def delete_student(student_id: str):
+    deleted = False
+
+    for server_name, frags in FRAGMENTS.items():
+        for frag_type, frag_info in frags.items():
+            db_name = frag_info["database"]
+            client = get_client(server_name, db_name)
+            collection = client.get_or_create_collection("students")
+
+            data = collection.get(limit=None)
+            ids = data.get("ids", [])
+
+            if student_id in ids:
+                try:
+                    collection.delete(ids=[student_id])
+                    deleted = True
+                    break
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to delete student {student_id}: {str(e)}"
+                    )
+        if deleted:
+            break
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Student with ID '{student_id}' not found in any database."
+        )
+
+    return {"message": f"Student with ID '{student_id}' successfully deleted."}
+
+
+
+@app.get("/support_ticket/{ticket_id}")
+def find_related_document_to_policy(
+    ticket_id: str,
+    top_k: int = Query(5, description="Number of closest policy documents to return")
+):
+    source_server = "DBVS1"
+    source_db = None
+    source_doc = None
+    found = False
+
+    for frag_type, frag_info in FRAGMENTS[source_server].items():
+        db_name = frag_info["database"]
+        client = get_client(source_server, db_name)
+
+        try:
+            collection = client.get_collection("support_tickets")
+        except Exception:
+            continue
+
+        data = collection.get(limit=None)
+        ids = data.get("ids", [])
+        docs = data.get("documents", [])
+
+        if ticket_id in ids:
+            idx = ids.index(ticket_id)
+            source_doc = docs[idx]
+            source_db = db_name
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Ticket '{ticket_id}' not found in DBVS1.")
+
+    target_server = "DBVS2"
+    if source_db == "db11":
+        target_db = "db21"
+    elif source_db == "db12":
+        target_db = "db22"
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid mapping for source DB '{source_db}'.")
 
     try:
-        for server_name, config in FRAGMENTS.items():
-            for frag_type, frag in config.items():
-                db_name = frag["database"]
-                low, high = frag["year_range"]
+        target_client = get_client(target_server, target_db)
+        try:
+            target_collection = target_client.get_collection("documents")
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"'documents' collection not found in {target_db}.")
 
-                if high < start_year or low > end_year:
-                    continue
+        query_result = target_collection.query(
+            query_texts=[source_doc],
+            n_results=top_k
+        )
 
-                client = get_client(server_name, db_name)
-                collection = client.get_or_create_collection("students")
-                data = collection.get()
+        docs_found = query_result.get("documents", [[]])[0]
+        metas_found = query_result.get("metadatas", [[]])[0]
+        ids_found = query_result.get("ids", [[]])[0]
+        distances = query_result.get("distances", [[]])[0]
 
-                docs = data.get("documents", [])
-                metas = data.get("metadatas", [])
-                ids = data.get("ids", [])
-
-                for i, meta in enumerate(metas):
-                    year = int(meta.get("study_year", 0))
-                    if start_year <= year <= end_year:
-                        results.append({
-                            "id": ids[i],
-                            "document": docs[i],
-                            "metadata": meta,
-                            "source": f"{server_name}/{db_name}"
-                        })
-                        total += 1
+        documents = []
+        for i in range(len(docs_found)):
+            documents.append({
+                "id": ids_found[i],
+                "document": docs_found[i],
+                "metadata": metas_found[i],
+                "distance": distances[i]
+            })
 
         return {
-            "status": "success",
-            "range": f"{start_year}-{end_year}",
-            "count": total,
-            "records": results
+            "documents": documents
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Select failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Vector similarity query failed: {str(e)}")
 
 
-@app.get("/")
-def root():
-    return {
-        "message": "Smart Student Routing API running",
-        "routing_rules": {
-            "DBVS1": "final_score / timestamp → academic (external)",
-            "DBVS2": "student_id / name / surname → personal (internal)",
-        },
-        "fragmentation": {
-            "1–2 years": "internal (db11 / db21)",
-            "3–4 years": "external (db12 / db22)",
-        },
-        "example": {
-            "DBVS1 example": {
-                "document": "Follow-up application letter",
-                "metadata": {
-                    "final_score": 7.13,
-                    "timestamp": "2025-01-15T11:20:00Z",
-                    "study_year": 3
-                }
-            },
-            "DBVS2 example": {
-                "document": "First-year computer engineering student...",
-                "metadata": {
-                    "student_id": "b17a24e3-4e86-4b71-bd8c-5e7c83a908b9",
-                    "name": "Ella",
-                    "surname": "Harris",
-                    "email": "ella.harris@example.com",
-                    "study_year": 1
-                }
-            }
-        }
-    }
+

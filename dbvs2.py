@@ -21,7 +21,7 @@ client_db21 = chromadb.HttpClient(tenant=tenant, database=db21, port=PORT)
 client_db22 = chromadb.HttpClient(tenant=tenant, database=db22, port=PORT)
 
 DB21_FOLDER = "./DB21"
-DB22_FOLDER = "./DB21"
+DB22_FOLDER = "./DB22"
 TABLES21 = ["courses", "documents", "exams", "programs", "students"]
 TABLES22 = ["courses", "documents", "exams", "programs", "students"]
 

@@ -22,8 +22,9 @@ def get_client(host, port, tenant, database):
 def print_collection_data(client, collection_name):
     try:
         collection = client.get_collection(collection_name)
-        data = collection.get()
+        data = collection.get(limit=None)
 
+        ids = data.get("ids", [])
         documents = data.get("documents", [])
         metadatas = data.get("metadatas", [])
 
@@ -32,10 +33,13 @@ def print_collection_data(client, collection_name):
             return
 
         print(f"\nShowing entries from '{collection_name}':")
+
         for i, doc in enumerate(documents):
-            print(f"\n  [{i+1}] Document: {doc}")
+            print(f"\n  [{i+1}] ID: {ids[i] if i < len(ids) else 'N/A'}")
+            print(f"      Document: {doc}")
             if i < len(metadatas):
                 print(f"      Metadata: {metadatas[i]}")
+
     except Exception as e:
         print(f"Error reading data from '{collection_name}': {e}")
 
@@ -79,8 +83,6 @@ def main():
         chroma_server_host=host,
         chroma_server_http_port=port,
     ))
-
-    # tenant = select_from_list(TENANTS, "tenant")
 
     print("\nChecking available databases...")
     available_dbs = []
