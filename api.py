@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response
 from fastapi import Query
+from datetime import datetime
 from pydantic import BaseModel
 import chromadb
 import uuid
@@ -98,9 +99,6 @@ def detect_metadata_type(metadata: dict):
         raise HTTPException(status_code=400, detail="Invalid metadata structure.")
 
 
-from datetime import datetime
-
-from datetime import datetime
 
 @app.post("/student")
 def insert_student(student: Student):

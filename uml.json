@@ -74,6 +74,20 @@
                     "comment": "",
                     "size": "",
                     "values": []
+                },
+                {
+                    "id": "gi4fwkhOm0X8BHYd8Xxhg",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -137,6 +151,20 @@
                     "notNull": false,
                     "increment": false,
                     "comment": ""
+                },
+                {
+                    "id": "5hoy4U3t0os4ckl3eP-1u",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": false,
+                    "unique": false,
+                    "notNull": false,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -175,6 +203,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 65535
+                },
+                {
+                    "id": "TMjF-OU9NO2COw8VXaSxr",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -239,6 +281,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 65535
+                },
+                {
+                    "id": "OFvdgYT2JA3X1Dg2YfH3k",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -330,6 +386,20 @@
                     "comment": "",
                     "size": "",
                     "values": []
+                },
+                {
+                    "id": "pZ1OOgIj-bSfAEmA2t0Ti",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -408,6 +478,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 255
+                },
+                {
+                    "id": "-R1O09uarApieEih41XON",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -488,6 +572,20 @@
                     "comment": "",
                     "size": "",
                     "values": []
+                },
+                {
+                    "id": "rsugejWXythvBw0VlOxh7",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -501,19 +599,6 @@
             "y": 39.33560562138797,
             "locked": false,
             "fields": [
-                {
-                    "name": "student_id",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": true,
-                    "unique": true,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "id": "Er7869qM76JGQJKEEl19E",
-                    "size": 255
-                },
                 {
                     "id": "_Uif-zRbRkb7qNXvw1geM",
                     "name": "problem",
@@ -566,6 +651,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 255
+                },
+                {
+                    "id": "0K1ADrQbe7OWs0Zu1d3A6",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -574,28 +673,15 @@
         },
         {
             "id": "oaUIS7V2y75RftnLYsrdW",
-            "name": "professor_reviews",
-            "x": 945.1540221682837,
-            "y": -87.69627458082664,
+            "name": "course_review",
+            "x": 954.0187548310178,
+            "y": -87.69627458082658,
             "locked": false,
             "fields": [
                 {
                     "id": "Atjg5mdr3LlyIsWMWQU4d",
-                    "name": "student_id",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": true,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "2QTZkE874zL2mNMuJtQtX",
-                    "name": "name",
-                    "type": "VARCHAR",
+                    "name": "course_id",
+                    "type": "INTEGER",
                     "default": "",
                     "check": "",
                     "primary": false,
@@ -603,72 +689,8 @@
                     "notNull": true,
                     "increment": false,
                     "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "8qxBz1opSGnQPRDI6tYgB",
-                    "name": "surname",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "hxusKeOdGHybPiEqtyyEO",
-                    "name": "department",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "QzQtnDukonYZSPLfruEF1",
-                    "name": "title",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "1ZPonwoAB7CM9acof4lEG",
-                    "name": "review",
-                    "type": "TEXT",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 65535
-                },
-                {
-                    "id": "hHdL1KRAoW9APuybfo2nd",
-                    "name": "course_name",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
+                    "size": "",
+                    "values": []
                 },
                 {
                     "id": "OvkL5Qb_wOiKGReDjO_iq",
@@ -677,6 +699,33 @@
                     "default": "",
                     "check": "",
                     "primary": false,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
+                },
+                {
+                    "id": "xWYZk9vxztcl85KsJNtUC",
+                    "name": "description",
+                    "type": "VARCHAR",
+                    "default": "",
+                    "check": "",
+                    "primary": false,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": 255
+                },
+                {
+                    "id": "AFErRgFCVmis_uaL_KNHw",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
                     "unique": false,
                     "notNull": true,
                     "increment": false,
@@ -1424,117 +1473,14 @@
                     "comment": "",
                     "size": "",
                     "values": []
-                }
-            ],
-            "comment": "",
-            "indices": [],
-            "color": "#175e7a"
-        },
-        {
-            "id": "XMBmtLJvUa5yMZ7nFmGnI",
-            "name": "professor_reviews",
-            "x": 918.3126647358184,
-            "y": 371.19874569174135,
-            "locked": false,
-            "fields": [
+                },
                 {
-                    "id": "Atjg5mdr3LlyIsWMWQU4d",
-                    "name": "student_id",
-                    "type": "VARCHAR",
+                    "id": "odoihWgaFocCZfZZI5hnq",
+                    "name": "id",
+                    "type": "INTEGER",
                     "default": "",
                     "check": "",
                     "primary": true,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "2QTZkE874zL2mNMuJtQtX",
-                    "name": "name",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "8qxBz1opSGnQPRDI6tYgB",
-                    "name": "surname",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "hxusKeOdGHybPiEqtyyEO",
-                    "name": "department",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "QzQtnDukonYZSPLfruEF1",
-                    "name": "title",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "1ZPonwoAB7CM9acof4lEG",
-                    "name": "review",
-                    "type": "TEXT",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": true,
-                    "increment": false,
-                    "comment": "",
-                    "size": 65535
-                },
-                {
-                    "id": "hHdL1KRAoW9APuybfo2nd",
-                    "name": "course_name",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
-                    "unique": false,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "size": 255
-                },
-                {
-                    "id": "OvkL5Qb_wOiKGReDjO_iq",
-                    "name": "timestamp",
-                    "type": "TIMESTAMP",
-                    "default": "",
-                    "check": "",
-                    "primary": false,
                     "unique": false,
                     "notNull": true,
                     "increment": false,
@@ -1621,6 +1567,20 @@
                     "comment": "",
                     "size": "",
                     "values": []
+                },
+                {
+                    "id": "wNRJrKTMPcF5scF_a5bmb",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -1659,6 +1619,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 65535
+                },
+                {
+                    "id": "aAgjIqwqrgknd7NgcNW-T",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -1737,6 +1711,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 255
+                },
+                {
+                    "id": "2cbbGN00Az7r6enoaNZLP",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -1750,19 +1738,6 @@
             "y": 364.82415596088345,
             "locked": false,
             "fields": [
-                {
-                    "name": "student_id",
-                    "type": "VARCHAR",
-                    "default": "",
-                    "check": "",
-                    "primary": true,
-                    "unique": true,
-                    "notNull": false,
-                    "increment": false,
-                    "comment": "",
-                    "id": "Er7869qM76JGQJKEEl19E",
-                    "size": 255
-                },
                 {
                     "id": "_Uif-zRbRkb7qNXvw1geM",
                     "name": "problem",
@@ -1815,6 +1790,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 255
+                },
+                {
+                    "id": "j1OTPgjJuVXI2kiLJ5VVR",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -1895,6 +1884,20 @@
                     "comment": "",
                     "size": "",
                     "values": []
+                },
+                {
+                    "id": "8_H-lAx9NBW7AOi5vzY2I",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -1959,6 +1962,20 @@
                     "increment": false,
                     "comment": "",
                     "size": 65535
+                },
+                {
+                    "id": "y-JQQMqtA9qkmKz_5Ry-t",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
@@ -2022,6 +2039,85 @@
                     "notNull": false,
                     "increment": false,
                     "comment": ""
+                },
+                {
+                    "id": "XrGdQ_yQNuYh4_AXD5v2b",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
+                }
+            ],
+            "comment": "",
+            "indices": [],
+            "color": "#175e7a"
+        },
+        {
+            "id": "794_U7uDrC81ESSyHcTfs",
+            "name": "course_review",
+            "x": 918.4832471468285,
+            "y": 474.96540542046296,
+            "locked": false,
+            "fields": [
+                {
+                    "name": "course_id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": true,
+                    "notNull": true,
+                    "increment": true,
+                    "comment": "",
+                    "id": "DCdgO4UNjaBpYyhalGkh_"
+                },
+                {
+                    "id": "RKsT54nY4NthWy9jipC5o",
+                    "name": "timestamp",
+                    "type": "TIMESTAMP",
+                    "default": "",
+                    "check": "",
+                    "primary": false,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
+                },
+                {
+                    "id": "A-KDzUEsJRQyhQEVEzmEm",
+                    "name": "description",
+                    "type": "VARCHAR",
+                    "default": "",
+                    "check": "",
+                    "primary": false,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": 255
+                },
+                {
+                    "id": "a5lv5FIhiZK0U376simeS",
+                    "name": "id",
+                    "type": "INTEGER",
+                    "default": "",
+                    "check": "",
+                    "primary": true,
+                    "unique": false,
+                    "notNull": true,
+                    "increment": false,
+                    "comment": "",
+                    "size": "",
+                    "values": []
                 }
             ],
             "comment": "",
