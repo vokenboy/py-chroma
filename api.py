@@ -312,38 +312,58 @@ def update_student(student_id: str, update: StudentUpdate):
     return Response(status_code=200)
 
 @app.delete("/student/{student_id}")
-def delete_student(student_id: str):
-    deleted = False
+def delete_student(student_id: int):
+    sid = str(student_id)
 
-    for server_name, frags in FRAGMENTS.items():
-        for frag_type, frag_info in frags.items():
+    def locate_student(server_name: str):
+        for frag_type, frag_info in FRAGMENTS[server_name].items():
             db_name = frag_info["database"]
             client = get_client(server_name, db_name)
-            collection = client.get_or_create_collection("students")
+            try:
+                collection = client.get_collection("students")
+            except Exception:
+                continue
 
             data = collection.get(limit=None)
             ids = data.get("ids", [])
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
 
-            if student_id in ids:
-                try:
-                    collection.delete(ids=[student_id])
-                    deleted = True
-                    break
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to delete student {student_id}: {str(e)}"
-                    )
-        if deleted:
-            break
+            if sid in ids:
+                idx = ids.index(sid)
+                doc = docs[idx]
+                meta = metas[idx] if idx < len(metas) and isinstance(metas[idx], dict) else {}
+                return {"db": db_name, "doc": doc, "meta": meta}
+        return None
 
-    if not deleted:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Student with ID '{student_id}' not found in any database."
-        )
+    # Require presence in both vertical fragments to ensure sync
+    s1 = locate_student("DBVS1")
+    s2 = locate_student("DBVS2")
 
-    return {"message": f"Student with ID '{student_id}' successfully deleted."}
+    if not s1 or not s2:
+        raise HTTPException(status_code=404, detail=f"Student '{sid}' not found in all vertical fragments")
+
+    # Delete in DBVS1 then DBVS2; rollback DBVS1 if DBVS2 fails
+    try:
+        c1 = get_client("DBVS1", s1["db"])\
+            .get_or_create_collection("students")
+        c1.delete(ids=[sid])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete from DBVS1:{s1['db']}: {e}")
+
+    try:
+        c2 = get_client("DBVS2", s2["db"])\
+            .get_or_create_collection("students")
+        c2.delete(ids=[sid])
+    except Exception as e:
+        # Rollback DBVS1 deletion
+        try:
+            c1.add(ids=[sid], documents=[s1["doc"]], metadatas=[s1["meta"]])
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to delete from DBVS2:{s2['db']}: {e}")
+
+    return {"message": "Student deleted successfully", "student_id": sid}
 
 
 
