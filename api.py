@@ -55,6 +55,10 @@ class StudentUpdate(BaseModel):
     metadata: dict
 
 
+class CourseReviewCreate(BaseModel):
+    text: str
+
+
 def get_server_by_name(name: str):
     for s in SERVERS:
         if s["name"].lower() == name.lower():
@@ -250,6 +254,54 @@ def test_insert_student_dbvs2_fail(student: Student):
         return insert_student(student)
     finally:
         globals()["get_client"] = original_get_client
+
+@app.post("/course/{course_id}/review")
+def add_course_review(course_id: int, payload: CourseReviewCreate):
+    located_fragment = None
+    course_id_str = str(course_id)
+    for frag_type, frag_info in FRAGMENTS["DBVS2"].items():
+        db_name = frag_info["database"]
+        try:
+            client = get_client("DBVS2", db_name)
+            collection = client.get_collection("courses")
+        except Exception:
+            continue
+
+        try:
+            data = collection.get(ids=[course_id_str])
+            ids = data.get("ids", []) or []
+            if course_id_str in ids:
+                located_fragment = frag_type  
+                break
+        except Exception:
+            continue
+
+    if not located_fragment:
+        raise HTTPException(status_code=404, detail=f"Course '{course_id}' not found in DBVS2")
+
+    target_dbvs1_db = FRAGMENTS["DBVS1"][located_fragment]["database"]
+
+    # Prepare review payload
+    review_id = str(uuid.uuid4())
+    review_doc = payload.text
+    review_meta = {
+        "course_id": course_id,
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    try:
+        client_dbvs1 = get_client("DBVS1", target_dbvs1_db)
+        col = client_dbvs1.get_or_create_collection("course_review")
+        col.add(ids=[review_id], documents=[review_doc], metadatas=[review_meta])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to insert course review into DBVS1:{target_dbvs1_db}: {e}")
+
+    return {
+        "message": "Course review inserted",
+        "course_id": course_id,
+        "dbvs1_database": target_dbvs1_db,
+        "review_id": review_id,
+    }
 
 
 @app.delete("/course/{course_id}")
