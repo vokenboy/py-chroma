@@ -35,7 +35,7 @@ class DBVS1Metadata(BaseModel):
 
 
 class DBVS2Metadata(BaseModel):
-    student_id: str | None = None
+    student_id: int | None = None
     name: str
     surname: str
     email: str
@@ -100,39 +100,156 @@ from datetime import datetime
 
 @app.post("/student")
 def insert_student(student: Student):
-    student_id = str(uuid.uuid4())
-    metadata = student.metadata
+    meta_in = dict(student.metadata or {})
 
-    if not isinstance(metadata.get("study_year"), int):
+    if not isinstance(meta_in.get("study_year"), int):
         try:
-            metadata["study_year"] = int(metadata.get("study_year"))
+            meta_in["study_year"] = int(meta_in.get("study_year"))
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="study_year must be an integer")
 
-    target_server = detect_metadata_type(metadata)
-    study_year = metadata.get("study_year")
-    target_db = resolve_fragment(target_server, study_year)
+    study_year = meta_in.get("study_year")
+    if study_year not in [1, 2, 3, 4]:
+        raise HTTPException(status_code=400, detail="study_year must be 1, 2, 3, or 4")
 
-    if target_server == "DBVS2":
-        metadata["student_id"] = student_id
-    if target_server == "DBVS1":
-        # Mirror student_id into DBVS1 metadata to ensure vertical join compatibility
-        metadata["student_id"] = student_id
+    if "final_score" not in meta_in:
+        raise HTTPException(status_code=400, detail="Missing required field: final_score for DBVS1 metadata")
 
-    if target_server == "DBVS1" and "timestamp" not in metadata:
-        metadata["timestamp"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    dbvs1_meta = {
+        "final_score": meta_in.get("final_score"),
+        "study_year": study_year,
+    }
+    if "timestamp" in meta_in:
+        dbvs1_meta["timestamp"] = meta_in["timestamp"]
+    else:
+        dbvs1_meta["timestamp"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    DBVS1Metadata(**dbvs1_meta)
+
+    missing_dbvs2 = [k for k in ["name", "surname", "email"] if k not in meta_in]
+    if missing_dbvs2:
+        raise HTTPException(status_code=400, detail=f"Missing required fields for DBVS2 metadata: {', '.join(missing_dbvs2)}")
+
+    db_dbvs1 = resolve_fragment("DBVS1", study_year)
+    db_dbvs2 = resolve_fragment("DBVS2", study_year)
+
+    def _allocate_next_student_id():
+        max_id = 0
+        for server_name, frags in FRAGMENTS.items():
+            for frag_info in frags.values():
+                dbname = frag_info["database"]
+                try:
+                    tmp_client = get_client(server_name, dbname)
+                    tmp_collection = tmp_client.get_or_create_collection("students")
+                    data = tmp_collection.get(limit=None)
+                except Exception:
+                    continue
+                for rid in data.get("ids", []) or []:
+                    try:
+                        val = int(rid)
+                        if val > max_id:
+                            max_id = val
+                    except (ValueError, TypeError):
+                        continue
+        return max_id + 1
 
     try:
-        client = get_client(target_server, target_db)
-        collection = client.get_or_create_collection("students")
-        collection.add(
+        student_id_int = _allocate_next_student_id()
+        student_id = str(student_id_int)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to allocate new student id: {str(e)}")
+
+    dbvs2_meta = {
+        "student_id": student_id_int,
+        "name": meta_in.get("name"),
+        "surname": meta_in.get("surname"),
+        "email": meta_in.get("email"),
+        "study_year": study_year,
+    }
+    DBVS2Metadata(**dbvs2_meta)
+
+    collection_dbvs1 = None
+    try:
+        client_dbvs1 = get_client("DBVS1", db_dbvs1)
+        collection_dbvs1 = client_dbvs1.get_or_create_collection("students")
+        collection_dbvs1.add(
             documents=[student.document],
-            metadatas=[metadata],
+            metadatas=[dbvs1_meta],
             ids=[student_id],
         )
-        return {"message": "Student inserted successfully", "student_id": student_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Insert failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Insert into DBVS1 failed: {str(e)}")
+
+    try:
+        client_dbvs2 = get_client("DBVS2", db_dbvs2)
+        collection_dbvs2 = client_dbvs2.get_or_create_collection("students")
+        collection_dbvs2.add(
+            documents=[student.document],
+            metadatas=[dbvs2_meta],
+            ids=[student_id],
+        )
+    except Exception as e:
+        try:
+            if collection_dbvs1 is not None:
+                collection_dbvs1.delete(ids=[student_id])
+        except Exception as rollback_err:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Insert into DBVS2 failed: {str(e)}; "
+                    f"Rollback of DBVS1 also failed: {str(rollback_err)}"
+                ),
+            )
+        raise HTTPException(status_code=500, detail=f"Insert into DBVS2 failed (rolled back DBVS1): {str(e)}")
+
+    return {"message": "Student inserted successfully across DBVS1 and DBVS2", "student_id": student_id_int}
+
+
+class _FailingAddCollection:
+    def __init__(self, base):
+        self._base = base
+
+    def add(self, ids, documents, metadatas):
+        raise RuntimeError("Simulated DBVS2 failure on add")
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+class _ClientProxy:
+    def __init__(self, base, fail_on_add: bool = False):
+        self._base = base
+        self._fail_on_add = fail_on_add
+
+    def get_or_create_collection(self, name):
+        col = self._base.get_or_create_collection(name)
+        if self._fail_on_add:
+            return _FailingAddCollection(col)
+        return col
+
+    def get_collection(self, name):
+        col = self._base.get_collection(name)
+        if self._fail_on_add:
+            return _FailingAddCollection(col)
+        return col
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+@app.post("/_test/transaction/dbvs2_fail")
+def test_insert_student_dbvs2_fail(student: Student):
+    original_get_client = get_client
+
+    def patched_get_client(server_name: str, db_name: str):
+        base_client = original_get_client(server_name, db_name)
+        return _ClientProxy(base_client, fail_on_add=(server_name == "DBVS2"))
+
+    try:
+        globals()["get_client"] = patched_get_client
+        return insert_student(student)
+    finally:
+        globals()["get_client"] = original_get_client
 
 
 @app.put("/student/{student_id}")
@@ -158,9 +275,6 @@ def update_student(student_id: str, update: StudentUpdate):
             collection = client.get_or_create_collection("students")
             data = collection.get(limit=None)
             ids = data.get("ids", [])
-            metas = data.get("metadatas", [])
-            docs = data.get("documents", [])
-
             if student_id in ids:
                 idx = ids.index(student_id)
                 existing_metadata = metas[idx]
