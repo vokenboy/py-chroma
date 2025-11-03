@@ -252,6 +252,124 @@ def test_insert_student_dbvs2_fail(student: Student):
         globals()["get_client"] = original_get_client
 
 
+@app.delete("/course/{course_id}")
+def delete_course(course_id: str):
+    source_db2 = None
+    deleted_course = False
+    course_id_str = str(course_id)
+
+    saved_doc = None
+    saved_meta = {}
+
+    for frag_info in FRAGMENTS["DBVS2"].values():
+        db_name = frag_info["database"]
+        client = get_client("DBVS2", db_name)
+        try:
+            collection = client.get_collection("courses")
+        except Exception:
+            continue
+
+        data = collection.get(limit=None)
+        ids = data.get("ids", [])
+        docs = data.get("documents", [])
+        metas = data.get("metadatas", [])
+        if course_id_str in ids:
+            try:
+                idx = ids.index(course_id_str)
+                saved_doc = docs[idx] if idx < len(docs) else None
+                saved_meta = metas[idx] if idx < len(metas) and isinstance(metas[idx], dict) else {}
+                collection.delete(ids=[course_id_str])
+                deleted_course = True
+                source_db2 = db_name
+                break
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to delete course {course_id_str} from {db_name}: {str(e)}")
+
+    if not deleted_course:
+        raise HTTPException(status_code=404, detail=f"Course with ID '{course_id_str}' not found in DBVS2.")
+
+    if source_db2 == "db21":
+        peer_db1 = "db11"
+    elif source_db2 == "db22":
+        peer_db1 = "db12"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown DBVS2 database '{source_db2}'.")
+
+    deleted_reviews = 0
+    try:
+        client_db1 = get_client("DBVS1", peer_db1)
+        try:
+            review_collection = client_db1.get_collection("course_review")
+        except Exception:
+            try:
+                review_collection = client_db1.get_collection("course_reviews")
+            except Exception:
+                review_collection = None
+
+        if review_collection is not None:
+            data = review_collection.get(limit=None)
+            ids = data.get("ids", [])
+            metas = data.get("metadatas", [])
+
+            ids_to_delete = []
+            for i, rid in enumerate(ids):
+                meta = metas[i] if i < len(metas) else {}
+                course_meta_id = None
+                if isinstance(meta, dict) and "course_id" in meta:
+                    course_meta_id = meta.get("course_id")
+                if course_meta_id is None:
+                    continue
+
+                try:
+                    if str(course_meta_id) == course_id_str:
+                        ids_to_delete.append(rid)
+                except Exception:
+                    continue
+
+            if ids_to_delete:
+                review_collection.delete(ids=ids_to_delete)
+                deleted_reviews = len(ids_to_delete)
+    except HTTPException:
+        raise
+    except Exception as e:
+        restore_error = None
+        try:
+            restore_client = get_client("DBVS2", source_db2)
+            restore_collection = restore_client.get_or_create_collection("courses")
+            restore_collection.add(
+                ids=[course_id_str],
+                documents=[saved_doc if isinstance(saved_doc, str) else (saved_doc or "")],
+                metadatas=[saved_meta if isinstance(saved_meta, dict) else {}],
+            )
+        except Exception as re:
+            restore_error = str(re)
+        # Report failure with rollback status
+        if restore_error:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Failed to delete related course_review items in {peer_db1}: {str(e)}; "
+                    f"also failed to restore course {course_id_str} in {source_db2}: {restore_error}"
+                ),
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Failed to delete related course_review items in {peer_db1}: {str(e)}; "
+                    f"course deletion rolled back in {source_db2}"
+                ),
+            )
+
+    return {
+        "message": "Course deleted successfully",
+        "course_id": course_id_str,
+        "source_db": source_db2,
+        "deleted_course_reviews": deleted_reviews,
+        "peer_db": peer_db1,
+    }
+
+
 @app.put("/student/{student_id}")
 def update_student(student_id: str, update: StudentUpdate):
     metadata = update.metadata
