@@ -501,3 +501,139 @@ def get_all_students():
         })
 
     return {"students": students}
+
+
+@app.post("/student/{student_id}/upgrade")
+def upgrade_student_year(student_id: int):
+    sid = str(student_id)
+
+    def locate_student(server_name: str):
+        found = None
+        for frag_type, frag_info in FRAGMENTS[server_name].items():
+            db_name = frag_info["database"]
+            client = get_client(server_name, db_name)
+            try:
+                collection = client.get_collection("students")
+            except Exception:
+                continue
+
+            data = collection.get(limit=None)
+            ids = data.get("ids", [])
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
+
+            if sid in ids:
+                idx = ids.index(sid)
+                doc = docs[idx]
+                meta = metas[idx] if idx < len(metas) and isinstance(metas[idx], dict) else {}
+                return {
+                    "db": db_name,
+                    "doc": doc,
+                    "meta": meta,
+                }
+        return None
+
+    # Locate across both vertical fragments
+    s1 = locate_student("DBVS1")
+    s2 = locate_student("DBVS2")
+
+    if not s1 or not s2:
+        raise HTTPException(status_code=404, detail=f"Student '{sid}' not found in all vertical fragments")
+
+    def to_int_year(v):
+        try:
+            return int(v)
+        except Exception:
+            return None
+
+    y1 = to_int_year((s1["meta"] or {}).get("study_year"))
+    y2 = to_int_year((s2["meta"] or {}).get("study_year"))
+
+    if y1 is None or y2 is None:
+        raise HTTPException(status_code=400, detail="study_year missing or invalid in metadata")
+
+    if y1 != y2:
+        raise HTTPException(status_code=409, detail="Inconsistent study_year across vertical fragments")
+
+    current_year = y1
+    if current_year >= 4:
+        raise HTTPException(status_code=400, detail="Student is already at maximum study year (4)")
+
+    new_year = current_year + 1
+
+    # Helper to apply update/move atomically within a server (with internal compensation)
+    def apply_on_server(server_name: str, doc: str, meta: dict):
+        old_db = resolve_fragment(server_name, current_year)
+        new_db = resolve_fragment(server_name, new_year)
+
+        # Ensure clean metadata copy
+        old_meta = dict(meta or {})
+        new_meta = dict(old_meta)
+        new_meta["study_year"] = new_year
+
+        old_client = get_client(server_name, old_db)
+        old_col = old_client.get_or_create_collection("students")
+
+        if new_db == old_db:
+            # In-place update
+            try:
+                old_col.update(ids=[sid], metadatas=[new_meta], documents=[doc])
+                return {"action": "update", "server": server_name, "db": old_db, "prev_meta": old_meta}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to update {server_name}:{old_db}: {e}")
+        else:
+            # Move across horizontal fragments (add to new, then delete old). Compensate if delete fails
+            new_client = get_client(server_name, new_db)
+            new_col = new_client.get_or_create_collection("students")
+            try:
+                new_col.add(ids=[sid], documents=[doc], metadatas=[new_meta])
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to add to {server_name}:{new_db}: {e}")
+            try:
+                old_col.delete(ids=[sid])
+            except Exception as e:
+                # Compensation: remove from new to revert
+                try:
+                    new_col.delete(ids=[sid])
+                except Exception:
+                    pass
+                raise HTTPException(status_code=500, detail=f"Failed to delete from {server_name}:{old_db}: {e}")
+
+            return {"action": "move", "server": server_name, "from": old_db, "to": new_db, "doc": doc, "prev_meta": old_meta}
+
+    # Apply on DBVS1 first, then DBVS2. If second fails, rollback first.
+    result1 = apply_on_server("DBVS1", s1["doc"], s1["meta"])
+    try:
+        result2 = apply_on_server("DBVS2", s2["doc"], s2["meta"])
+    except HTTPException as err:
+        # Rollback DBVS1
+        try:
+            if result1["action"] == "update":
+                db = result1["db"]
+                client = get_client("DBVS1", db)
+                col = client.get_or_create_collection("students")
+                col.update(ids=[sid], metadatas=[result1["prev_meta"]], documents=[s1["doc"]])
+            elif result1["action"] == "move":
+                # Move back: add to original, delete from new
+                from_db = result1["from"]
+                to_db = result1["to"]
+                from_client = get_client("DBVS1", from_db)
+                to_client = get_client("DBVS1", to_db)
+                from_col = from_client.get_or_create_collection("students")
+                to_col = to_client.get_or_create_collection("students")
+                from_col.add(ids=[sid], documents=[result1["doc"]], metadatas=[result1["prev_meta"]])
+                try:
+                    to_col.delete(ids=[sid])
+                except Exception:
+                    pass
+        except Exception:
+            # If rollback fails, still return the original error to signal inconsistency
+            pass
+        raise err
+
+    return {
+        "message": "Student upgraded successfully",
+        "student_id": sid,
+        "previous_year": current_year,
+        "new_year": new_year,
+    }
