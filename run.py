@@ -34,8 +34,8 @@ client_db11 = chromadb.HttpClient(tenant=tenant, database=db11)
 client_db12 = chromadb.HttpClient(tenant=tenant, database=db12)
 
 DATA_FOLDER = "./DB11"
-TABLES11 = ["professor_reviews", "students", "support_tickets", "support_responses"]
-TABLES12 = ["professor_reviews"]
+TABLES11 = ["course_review", "students", "support_tickets", "support_responses"]
+TABLES12 = ["course_review"]
 
 def import_csv_to_chroma(client, base_folder, collection_name, filename):
     filepath = os.path.join(base_folder, filename)
