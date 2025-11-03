@@ -659,7 +659,9 @@ def get_all_students():
         dbvs1_entry = aggregated["DBVS1"].get(mid, {})
         dbvs2_entry = aggregated["DBVS2"].get(mid, {})
 
-        document = dbvs2_entry.get("document") or dbvs1_entry.get("document")
+        # Collect documents from both vertical fragments
+        external_document = dbvs1_entry.get("document")
+        internal_document = dbvs2_entry.get("document") 
 
         merged = {}
         if isinstance(dbvs2_entry.get("metadata"), dict):
@@ -686,7 +688,8 @@ def get_all_students():
 
         students.append({
             "id": mid,
-            "document": document,
+            "external_document": external_document,
+            "internal_document": internal_document,
             "metadata": fields,
         })
 
