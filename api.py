@@ -190,7 +190,7 @@ def insert_student(student: Student):
         client_dbvs2 = get_client("DBVS2", db_dbvs2)
         collection_dbvs2 = client_dbvs2.get_or_create_collection("students")
         # Force error
-        # raise RuntimeError("Forced DBVS2 failure for transactional rollback testing")
+        # raise RuntimeError("Test")
         collection_dbvs2.add(
             documents=[student.document],
             metadatas=[dbvs2_meta],
@@ -393,8 +393,8 @@ def delete_course(course_id: str):
                     continue
 
         if ids_to_delete:
-            # Uncomment to simulate failure during review deletion and test rollback logic.
-            raise RuntimeError("Forced DBVS1 review deletion failure for rollback testing")
+            # Raise error for fragment 1
+            # raise RuntimeError("Test")
             review_collection.delete(ids=ids_to_delete)
             deleted_reviews = len(ids_to_delete)
     except HTTPException:
@@ -690,24 +690,22 @@ def move_course(course_id: str, req: MoveCourseRequest):
 
 @app.post("/course/{course_id}/upgrade")
 def upgrade_course(course_id: str):
-    """
-    Body-less convenience endpoint that moves course from db21 -> db22,
-    including linked exam/program and related course_review entries.
-    If already in db22, returns a no-op message.
-    """
     course_id_str = str(course_id)
-    current_db2 = None
-    for frag_info in FRAGMENTS["DBVS2"].values():
-        db_name = frag_info["database"]
-        client = get_client("DBVS2", db_name)
-        try:
-            col = client.get_collection("courses")
-        except Exception:
-            continue
-        data = col.get(limit=None)
-        if course_id_str in (data.get("ids", []) or []):
-            current_db2 = db_name
-            break
+
+    def _locate_course_db():
+        for frag_info in FRAGMENTS["DBVS2"].values():
+            db_name = frag_info["database"]
+            client = get_client("DBVS2", db_name)
+            try:
+                col = client.get_collection("courses")
+            except Exception:
+                continue
+            data = col.get(limit=None)
+            if course_id_str in (data.get("ids", []) or []):
+                return db_name
+        return None
+
+    current_db2 = _locate_course_db()
 
     if current_db2 is None:
         raise HTTPException(status_code=404, detail=f"Course {course_id_str} not found in DBVS2")
@@ -715,8 +713,49 @@ def upgrade_course(course_id: str):
     if current_db2 == "db22":
         return {"message": "Course already at upper level (db22)", "course_id": course_id_str, "db": current_db2}
 
+    def _handle_upgrade_failure(failure_detail: str):
+        rollback_error = None
+        try:
+            new_location = _locate_course_db()
+            if new_location is not None and new_location != current_db2:
+                try:
+                    move_course(course_id, MoveCourseRequest(target_db=current_db2))
+                except HTTPException as rollback_exc:
+                    rollback_error = (
+                        rollback_exc.detail
+                        if isinstance(rollback_exc.detail, str)
+                        else str(rollback_exc.detail)
+                    )
+                except Exception as rollback_exc:
+                    rollback_error = str(rollback_exc)
+        except Exception as locator_err:
+            rollback_error = f"failed to verify course location after failure: {str(locator_err)}"
+
+        if rollback_error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"{failure_detail}; rollback attempt failed: {rollback_error}",
+            )
+
     # Move from db21 -> db22
-    return move_course(course_id, MoveCourseRequest(target_db="db22"))
+    try:
+        # Fail transaction
+        # raise RuntimeError("Test")
+        result = move_course(course_id, MoveCourseRequest(target_db="db22"))
+    except HTTPException as exc:
+        failure_detail = (
+            exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        )
+        _handle_upgrade_failure(failure_detail)
+        raise exc
+    except Exception as exc:
+        failure_detail = str(exc)
+        _handle_upgrade_failure(failure_detail)
+        raise HTTPException(status_code=500, detail=failure_detail)
+
+    result["message"] = "Course upgraded to db22"
+    result["previous_db"] = current_db2
+    return result
 
 
 @app.delete("/student/{student_id}")
@@ -823,6 +862,8 @@ def find_related_document_to_policy(
         except Exception:
             raise HTTPException(status_code=404, detail=f"'documents' collection not found in {target_db}.")
 
+        # Fail transaction
+        # raise RuntimeError("Test")
         query_result = target_collection.query(
             query_texts=[source_doc],
             n_results=top_k
