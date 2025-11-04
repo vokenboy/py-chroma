@@ -132,9 +132,11 @@ def insert_student(student: Student):
     if missing_dbvs2:
         raise HTTPException(status_code=400, detail=f"Missing required fields for DBVS2 metadata: {', '.join(missing_dbvs2)}")
 
+    # Helps to add into fragments
     db_dbvs1 = resolve_fragment("DBVS1", study_year)
     db_dbvs2 = resolve_fragment("DBVS2", study_year)
 
+    #Find max student_id across all fragments
     def _allocate_next_student_id():
         max_id = 0
         for server_name, frags in FRAGMENTS.items():
@@ -171,6 +173,7 @@ def insert_student(student: Student):
     DBVS2Metadata(**dbvs2_meta)
 
     collection_dbvs1 = None
+    # Insert into dbvs1
     try:
         client_dbvs1 = get_client("DBVS1", db_dbvs1)
         collection_dbvs1 = client_dbvs1.get_or_create_collection("students")
@@ -182,9 +185,12 @@ def insert_student(student: Student):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Insert into DBVS1 failed: {str(e)}")
 
+    # Insert into dbvs2
     try:
         client_dbvs2 = get_client("DBVS2", db_dbvs2)
         collection_dbvs2 = client_dbvs2.get_or_create_collection("students")
+        # Force error
+        # raise RuntimeError("Forced DBVS2 failure for transactional rollback testing")
         collection_dbvs2.add(
             documents=[student.document],
             metadatas=[dbvs2_meta],
@@ -198,60 +204,17 @@ def insert_student(student: Student):
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    f"Insert into DBVS2 failed: {str(e)}; "
+                    f"Insert into DBVS2:{db_dbvs2} failed: {str(e)}; "
                     f"Rollback of DBVS1 also failed: {str(rollback_err)}"
                 ),
             )
-        raise HTTPException(status_code=500, detail=f"Insert into DBVS2 failed (rolled back DBVS1): {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Insert into DBVS2:{db_dbvs2} failed (rolled back DBVS1): {str(e)}",
+        )
 
     return {"message": "Student inserted successfully across DBVS1 and DBVS2", "student_id": student_id_int}
 
-
-class _FailingAddCollection:
-    def __init__(self, base):
-        self._base = base
-
-    def add(self, ids, documents, metadatas):
-        raise RuntimeError("Simulated DBVS2 failure on add")
-
-    def __getattr__(self, name):
-        return getattr(self._base, name)
-
-
-class _ClientProxy:
-    def __init__(self, base, fail_on_add: bool = False):
-        self._base = base
-        self._fail_on_add = fail_on_add
-
-    def get_or_create_collection(self, name):
-        col = self._base.get_or_create_collection(name)
-        if self._fail_on_add:
-            return _FailingAddCollection(col)
-        return col
-
-    def get_collection(self, name):
-        col = self._base.get_collection(name)
-        if self._fail_on_add:
-            return _FailingAddCollection(col)
-        return col
-
-    def __getattr__(self, name):
-        return getattr(self._base, name)
-
-
-@app.post("/_test/transaction/dbvs2_fail")
-def test_insert_student_dbvs2_fail(student: Student):
-    original_get_client = get_client
-
-    def patched_get_client(server_name: str, db_name: str):
-        base_client = original_get_client(server_name, db_name)
-        return _ClientProxy(base_client, fail_on_add=(server_name == "DBVS2"))
-
-    try:
-        globals()["get_client"] = patched_get_client
-        return insert_student(student)
-    finally:
-        globals()["get_client"] = original_get_client
 
 @app.post("/course/{course_id}/review")
 def add_course_review(course_id: int, payload: CourseReviewCreate):
@@ -345,6 +308,59 @@ def delete_course(course_id: str):
     else:
         raise HTTPException(status_code=400, detail=f"Unknown DBVS2 database '{source_db2}'.")
 
+    exam_deleted = False
+    saved_exam_doc = None
+    saved_exam_meta = {}
+    try:
+        exam_client = get_client("DBVS2", source_db2)
+    except Exception:
+        exam_client = None
+
+    if exam_client is not None:
+        try:
+            exam_collection = exam_client.get_collection("exams")
+        except Exception:
+            exam_collection = None
+
+        if exam_collection is not None:
+            try:
+                exam_data = exam_collection.get(ids=[course_id_str])
+                exam_ids = exam_data.get("ids", []) or []
+                if course_id_str in exam_ids:
+                    idx = exam_ids.index(course_id_str)
+                    docs = exam_data.get("documents", []) or []
+                    metas = exam_data.get("metadatas", []) or []
+                    saved_exam_doc = docs[idx] if idx < len(docs) else None
+                    saved_exam_meta = metas[idx] if idx < len(metas) and isinstance(metas[idx], dict) else {}
+                    exam_collection.delete(ids=[course_id_str])
+                    exam_deleted = True
+            except Exception as exam_err:
+                restore_error = None
+                try:
+                    restore_collection = exam_client.get_or_create_collection("courses")
+                    restore_collection.add(
+                        ids=[course_id_str],
+                        documents=[saved_doc if isinstance(saved_doc, str) else (saved_doc or "")],
+                        metadatas=[saved_meta if isinstance(saved_meta, dict) else {}],
+                    )
+                except Exception as re:
+                    restore_error = str(re)
+                if restore_error:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=(
+                            f"Failed to delete related exam {course_id_str} in {source_db2}: {str(exam_err)}; "
+                            f"also failed to restore course {course_id_str} in {source_db2}: {restore_error}"
+                        ),
+                    )
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"Failed to delete related exam {course_id_str} in {source_db2}: {str(exam_err)}; "
+                        f"course deletion rolled back in {source_db2}"
+                    ),
+                )
+
     deleted_reviews = 0
     try:
         client_db1 = get_client("DBVS1", peer_db1)
@@ -356,12 +372,12 @@ def delete_course(course_id: str):
             except Exception:
                 review_collection = None
 
+        ids_to_delete = []
         if review_collection is not None:
             data = review_collection.get(limit=None)
             ids = data.get("ids", [])
             metas = data.get("metadatas", [])
 
-            ids_to_delete = []
             for i, rid in enumerate(ids):
                 meta = metas[i] if i < len(metas) else {}
                 course_meta_id = None
@@ -376,40 +392,67 @@ def delete_course(course_id: str):
                 except Exception:
                     continue
 
-            if ids_to_delete:
-                review_collection.delete(ids=ids_to_delete)
-                deleted_reviews = len(ids_to_delete)
+        if ids_to_delete:
+            # Uncomment to simulate failure during review deletion and test rollback logic.
+            raise RuntimeError("Forced DBVS1 review deletion failure for rollback testing")
+            review_collection.delete(ids=ids_to_delete)
+            deleted_reviews = len(ids_to_delete)
     except HTTPException:
         raise
     except Exception as e:
-        restore_error = None
+        restore_course_error = None
+        restore_exam_error = None
+        restore_client = None
         try:
             restore_client = get_client("DBVS2", source_db2)
-            restore_collection = restore_client.get_or_create_collection("courses")
-            restore_collection.add(
-                ids=[course_id_str],
-                documents=[saved_doc if isinstance(saved_doc, str) else (saved_doc or "")],
-                metadatas=[saved_meta if isinstance(saved_meta, dict) else {}],
-            )
-        except Exception as re:
-            restore_error = str(re)
-        # Report failure with rollback status
-        if restore_error:
+        except Exception as re_client:
+            restore_course_error = str(re_client)
+            if exam_deleted:
+                restore_exam_error = str(re_client)
+
+        if restore_client is not None:
+            try:
+                restore_collection = restore_client.get_or_create_collection("courses")
+                restore_collection.add(
+                    ids=[course_id_str],
+                    documents=[saved_doc if isinstance(saved_doc, str) else (saved_doc or "")],
+                    metadatas=[saved_meta if isinstance(saved_meta, dict) else {}],
+                )
+            except Exception as re_course:
+                restore_course_error = str(re_course)
+
+            if exam_deleted:
+                try:
+                    restore_exam_collection = restore_client.get_or_create_collection("exams")
+                    restore_exam_collection.add(
+                        ids=[course_id_str],
+                        documents=[saved_exam_doc if isinstance(saved_exam_doc, str) else (saved_exam_doc or "")],
+                        metadatas=[saved_exam_meta if isinstance(saved_exam_meta, dict) else {}],
+                    )
+                except Exception as re_exam:
+                    restore_exam_error = str(re_exam)
+
+        failure_parts = []
+        if restore_course_error:
+            failure_parts.append(f"course {course_id_str} in {source_db2}: {restore_course_error}")
+        if exam_deleted and restore_exam_error:
+            failure_parts.append(f"exam {course_id_str} in {source_db2}: {restore_exam_error}")
+
+        if failure_parts:
             raise HTTPException(
                 status_code=500,
                 detail=(
                     f"Failed to delete related course_review items in {peer_db1}: {str(e)}; "
-                    f"also failed to restore course {course_id_str} in {source_db2}: {restore_error}"
+                    f"also failed to restore {' and '.join(failure_parts)}"
                 ),
             )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    f"Failed to delete related course_review items in {peer_db1}: {str(e)}; "
-                    f"course deletion rolled back in {source_db2}"
-                ),
-            )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Failed to delete related course_review items in {peer_db1}: {str(e)}; "
+                f"course deletion rolled back in {source_db2}"
+            ),
+        )
 
     return {
         "message": "Course deleted successfully",
@@ -675,65 +718,6 @@ def upgrade_course(course_id: str):
     # Move from db21 -> db22
     return move_course(course_id, MoveCourseRequest(target_db="db22"))
 
-
-@app.put("/student/{student_id}")
-def update_student(student_id: str, update: StudentUpdate):
-    metadata = update.metadata
-    new_year = metadata.get("study_year")
-
-    if new_year is not None:
-        try:
-            new_year = int(new_year)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400)
-
-        if new_year not in [1, 2, 3, 4]:
-            raise HTTPException(status_code=400)
-
-    moved = False
-
-    for server_name, frags in FRAGMENTS.items():
-        for frag_type, frag_info in frags.items():
-            db_name = frag_info["database"]
-            client = get_client(server_name, db_name)
-            collection = client.get_or_create_collection("students")
-            data = collection.get(limit=None)
-            ids = data.get("ids", [])
-            if student_id in ids:
-                idx = ids.index(student_id)
-                existing_metadata = metas[idx]
-                document = docs[idx]
-                existing_metadata.update(metadata)
-                if update.document:
-                    document = update.document
-
-                new_db = resolve_fragment(server_name, new_year) if new_year else db_name
-
-                if new_db == db_name:
-                    collection.update(
-                        ids=[student_id],
-                        metadatas=[existing_metadata],
-                        documents=[document],
-                    )
-                else:
-                    new_client = get_client(server_name, new_db)
-                    new_collection = new_client.get_or_create_collection("students")
-                    new_collection.add(
-                        documents=[document],
-                        metadatas=[existing_metadata],
-                        ids=[student_id],
-                    )
-                    collection.delete(ids=[student_id])
-
-                moved = True
-                break
-        if moved:
-            break
-
-    if not moved:
-        raise HTTPException(status_code=404, detail="Student not found in any database.")
-
-    return Response(status_code=200)
 
 @app.delete("/student/{student_id}")
 def delete_student(student_id: int):
